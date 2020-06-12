@@ -10,7 +10,7 @@ use crate::fs::devfs::foreground_pgid;
 use crate::fs::ioctl::*;
 use crate::process::process_group;
 use crate::processor;
-use crate::signal::{send_signal, Siginfo, Signal, SI_KERNEL};
+use crate::signal::{send_signal, Signal, SI_KERNEL, Siginfo};
 use crate::sync::Condvar;
 use crate::sync::SpinNoIrqLock as Mutex;
 use spin::RwLock;
@@ -36,12 +36,7 @@ impl Stdin {
                         send_signal(
                             proc,
                             -1,
-                            Siginfo {
-                                signo: SIGINT as i32,
-                                errno: 0,
-                                code: SI_KERNEL,
-                                field: Default::default(),
-                            },
+                            Siginfo::new(SIGINT as i32, 0, SI_KERNEL)
                         );
                     }
                 }

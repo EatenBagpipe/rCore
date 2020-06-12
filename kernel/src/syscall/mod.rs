@@ -216,7 +216,7 @@ impl Syscall<'_> {
                 args[2] as *mut SignalAction,
                 args[3],
             ),
-            SYS_RT_SIGRETURN => self.sys_rt_sigreturn(),
+            SYS_RT_SIGRETURN => self.sys_rt_sigreturn(args[0] as *const Sigset),
             SYS_RT_SIGPROCMASK => self.sys_rt_sigprocmask(
                 args[0],
                 args[1] as *const Sigset,

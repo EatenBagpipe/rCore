@@ -50,10 +50,9 @@ impl Syscall<'_> {
     }
 
     pub fn sys_rt_sigreturn(&mut self) -> SysResult {
-        info!("rt_sigreturn");
-        // FIXME: adapt arch
-        let frame = unsafe { (&*((self.tf.get_sp() - 8) as *mut SignalFrame)) };
-        // frame.info.signo
+        let frame = unsafe { (&*((self.tf.get_sp() - core::mem::size_of::<usize>()) as *mut SignalFrame)) };
+        self.thread.sig_mask = frame.ucontext.sig_mask;
+
         {
             let mut process = self.process();
             process.sigaltstack.flags ^=
@@ -80,6 +79,8 @@ impl Syscall<'_> {
         self.tf.rax = mc.rax;
         self.tf.rip = mc.rip;
         self.tf.rsp = mc.rsp;
+
+        info!("return to {:#x}", self.tf.rip);
 
         let ret = self.tf.rax as isize;
         if ret >= 0 {
@@ -126,12 +127,13 @@ impl Syscall<'_> {
     pub fn sys_kill(&mut self, pid: isize, signum: usize) -> SysResult {
         if let Some(signal) = <Signal as FromPrimitive>::from_usize(signum) {
             info!("kill: pid: {}, signal: {:?}", pid, signal);
-            let info = Siginfo {
-                signo: signum as i32,
-                errno: 0,
-                code: SI_USER,
-                field: Default::default(),
-            };
+
+            let mut info = Siginfo::new(signum as i32, 0, SI_USER);
+            {
+                let kill = info.kill_mut();
+                kill.pid = self.process().pid.get() as i32;
+                // kill.uid = ?
+            }
             match pid {
                 pid if pid > 0 => {
                     if let Some(process) = process(pid as usize) {
@@ -178,18 +180,21 @@ impl Syscall<'_> {
     }
 
     pub fn sys_tkill(&mut self, tid: usize, signum: usize) -> SysResult {
+
         if let Some(signal) = <Signal as FromPrimitive>::from_usize(signum) {
             info!("tkill: tid: {}, signal: {:?}", tid, signal);
+
+            let mut info = Siginfo::new(signum as i32, 0, SI_USER);
+            {
+                let mut kill = info.kill_mut();
+                kill.pid = self.process().pid.get() as i32;
+                // kill.uid = ?
+            }
             if let Some(process) = process_of(tid) {
                 send_signal(
                     process,
                     tid as isize,
-                    Siginfo {
-                        signo: signum as i32,
-                        errno: 0,
-                        code: SI_TKILL,
-                        field: Default::default(),
-                    },
+                    info
                 );
                 Ok(0)
             } else {

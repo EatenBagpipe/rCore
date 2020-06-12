@@ -25,7 +25,7 @@ use crate::sync::{Condvar, SpinLock, SpinNoIrqLock as Mutex};
 
 use super::abi::{self, ProcInitInfo};
 use crate::process::thread_manager;
-use crate::signal::{Siginfo, Signal, SignalAction, SignalStack, Sigset};
+use crate::signal::{Signal, SignalAction, SignalStack, Sigset, Siginfo};
 use bitflags::_core::cell::Ref;
 use core::mem::MaybeUninit;
 use pc_keyboard::KeyCode::BackTick;

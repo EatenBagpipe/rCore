@@ -5,8 +5,10 @@ use bitflags::*;
 use num::FromPrimitive;
 
 mod action;
+mod info;
 
 pub use self::action::*;
+pub use self::info::*;
 use crate::arch::interrupt::TrapFrame;
 use crate::arch::signal::MachineContext;
 use crate::arch::syscall::SYS_RT_SIGRETURN;
@@ -157,6 +159,10 @@ pub fn has_signal_to_do() -> bool {
 }
 
 pub fn do_signal(tf: &mut TrapFrame) {
+    // only handle signal when it is about to return to user space
+    if tf.cs & 3 != 3 {
+        return;
+    }
     let thread = unsafe { current_thread() };
     let mut process = unsafe { current_thread().proc.lock() };
     while let Some((idx, info)) =
@@ -188,18 +194,21 @@ pub fn do_signal(tf: &mut TrapFrame) {
         let action = process.dispositions[info.signo as usize];
         let action_flags = SignalActionFlags::from_bits_truncate(action.flags);
 
+        let term = || {
+            info!("default action: Term");
+            // FIXME: exit code ref please?
+            process.exit(info.signo as usize + 128);
+            yield_now();
+            unreachable!()
+        };
+
         // enter signal handler
         match action.handler {
             // TODO: complete default actions
             x if x == SIG_DFL => {
                 match signal {
-                    SIGALRM | SIGHUP | SIGINT => {
-                        info!("default action: Term");
-                        // FIXME: exit code ref please?
-                        process.exit(info.signo as usize + 128);
-                        yield_now();
-                        unreachable!()
-                    }
+                    SIGALRM | SIGHUP | SIGINT => term(),
+                    signal if !signal.is_standard() => term(),
                     _ => (),
                 }
             }
@@ -212,7 +221,6 @@ pub fn do_signal(tf: &mut TrapFrame) {
                 unimplemented!();
             }
             _ => {
-                info!("goto handler at {:#x}", action.handler);
                 process.sigaltstack.flags |= SignalStackFlags::ONSTACK.bits();
                 let stack = process.sigaltstack;
                 let sig_sp = {
@@ -247,6 +255,9 @@ pub fn do_signal(tf: &mut TrapFrame) {
                     sig_mask: thread.sig_mask,
                     _fpregs_mem: [0; 64],
                 };
+                if !action_flags.contains(SignalActionFlags::NODEFER) {
+                    thread.sig_mask.add_set(&action.mask);
+                }
                 if action_flags.contains(SignalActionFlags::RESTORER) {
                     frame.ret_code_addr = action.restorer; // legacy
                 } else {
@@ -261,6 +272,7 @@ pub fn do_signal(tf: &mut TrapFrame) {
                     frame.ret_code[5] = 0x0f;
                     frame.ret_code[6] = 0x05;
                 }
+                info!("goto handler at {:#x}, return addr is {:#x}, stack pointer is {:#x}", action.handler, frame.ret_code_addr, sig_sp);
                 #[cfg(target_arch = "x86_64")]
                 {
                     tf.rsp = sig_sp;

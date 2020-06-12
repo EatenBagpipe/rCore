@@ -19,6 +19,7 @@ pub const SI_KERNEL: i32 = 128;
 
 // yet there's a bug because of mismatching bits: https://sourceware.org/bugzilla/show_bug.cgi?id=25657
 // just support 64bits size sigset
+// TODO: prettier debug
 #[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Sigset(u64);
@@ -64,34 +65,6 @@ impl Debug for SignalAction {
             .field("restorer", &format!("{:#x}", self.restorer))
             .finish()
     }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union SiginfoFields {
-    pad: [u8; Self::PAD_SIZE],
-    // TODO: fill this union
-}
-
-impl SiginfoFields {
-    const PAD_SIZE: usize = 128 - 2 * core::mem::size_of::<i32>() - core::mem::size_of::<usize>();
-}
-
-impl Default for SiginfoFields {
-    fn default() -> Self {
-        SiginfoFields {
-            pad: [0; Self::PAD_SIZE],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct Siginfo {
-    pub signo: i32,
-    pub errno: i32,
-    pub code: i32,
-    pub field: SiginfoFields,
 }
 
 bitflags! {
